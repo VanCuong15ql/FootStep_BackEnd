@@ -2,7 +2,9 @@ const jwt = require("jsonwebtoken");
 
 const User = require("../models/user");
 
-const signToken = (userId) => jwt.sign({ userId }, process.env.JWT_SECRET);
+const { JWT_SECRET } = require("../config/secrets");
+
+const signToken = (userId) => jwt.sign({ userId }, JWT_SECRET);
 
 exports.login = async (req, res, next) => {
     const { email, password } = req.body;

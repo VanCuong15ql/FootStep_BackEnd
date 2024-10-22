@@ -2,9 +2,8 @@ const dotenv = require("dotenv");
 dotenv.config();
 
 const PORT = process.env.PORT ?? 3000;
-const MONGO_URL = process.env.MONGO_URL ?? "mongodb://localhost:27017";
-const DB_NAME = process.env.DB_NAME ?? "chat-online-app";
-const DB_USERNAME = process.env.DB_USERNAME ?? "";
+const DB_URL = process.env.DB_URL ?? "";
 const DB_PASSWORD = process.env.DB_PASSWORD ?? "";
+const JWT_SECRET = process.env.JWT_SECRET ?? "";
 
-module.exports = { PORT, MONGO_URL, DB_NAME, DB_USERNAME, DB_PASSWORD };
+module.exports = { PORT, DB_URL, DB_PASSWORD, JWT_SECRET };
