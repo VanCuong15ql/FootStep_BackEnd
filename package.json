@@ -27,6 +27,7 @@
     "mongoose": "^8.7.1",
     "morgan": "^1.10.0",
     "nodemon": "^3.1.7",
+    "otp-generator": "^4.0.1",
     "ts-node": "^10.9.1",
     "typescript": "^5.6.3",
     "xss": "^1.0.15"
