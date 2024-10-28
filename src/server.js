@@ -1,7 +1,7 @@
 const app = require('./app');
 const dotenv = require("dotenv");
 const mongoose = require("mongoose")
-const {PORT, DB_URL, DB_PASSWORD} = require("./config/secrets")
+const { PORT, DB_URL, DB_PASSWORD } = require("./config/secrets")
 
 process.on("uncaughtException", (err) => {
     console.log(err);
@@ -15,8 +15,11 @@ const server = http.createServer(app);
 const DB = DB_URL.replace("<PASSWORD>", DB_PASSWORD)
 
 mongoose.connect(DB, {
-    useNewUrlParser: true
-}).then(() => {
+    useNewUrlParser: true,
+    userCreateIndex: true,
+    userFindAndModify: false,
+    useUnifiedToplogy: true
+}).then((con) => {
     console.log("DB connection is successful");
 }).catch((err) => {
     console.log(err);
