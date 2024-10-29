@@ -1,27 +1,19 @@
 const sgMail = require('@sendgrid/mail');
 
-const { NODE_ENV, SG_KEY } = require('../config/secrets');
+const { SG_KEY } = require('../config/secrets');
 
 sgMail.setApiKey(SG_KEY);
 
-const sendSGMail = async ({
-    recipient,
-    sender,
-    subject,
-    html,
-    text,
-    attachments,
-}) => {
+const sendSGMail = async (args) => {
     try {
-        const from = sender || "";
+        const {from , to, subject, text} = args;
+        console.log(from, to, subject, text);
 
         const msg = {
-            to: recipient,
             from: from,
-            subject,
-            html: html,
+            to: to,
+            subject: subject,
             text: text,
-            attachments,
         }
 
         return sgMail.send(msg);
@@ -31,9 +23,5 @@ const sendSGMail = async ({
 }
 
 exports.sendEmail = async (args) => {
-    if (NODE_ENV === 'development') {
-        return new Promise.resolve();
-    } else {
-        return sendSGMail(args);
-    }
+    await sendSGMail(args);
 }
