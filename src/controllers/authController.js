@@ -6,7 +6,7 @@ const mailService = require("../services/mailer");
 
 const User = require("../models/user");
 
-const { JWT_SECRET } = require("../config/secrets");
+const { JWT_SECRET, MAILER } = require("../config/secrets");
 const filterObj = require("../utils/filterObj");
 const { promisify } = require("util");
 
@@ -62,7 +62,7 @@ exports.sendOTP = async (req, res, next) => {
     await user.save({ new: true, validateModifiedOnly: true });
 
     mailService.sendEmail({
-        from: "akalisp18mang@gmail.com",
+        from: MAILER,
         to: user.email,
         subject: "OTP for Chat App",
         text: `Your OTP is ${new_otp}. This is valid for 10 minutes`,
