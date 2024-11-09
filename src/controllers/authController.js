@@ -55,7 +55,7 @@ exports.sendOTP = async (req, res, next) => {
     const otp_expiry_time = Date.now() + 10 * 60 * 1000;
 
     const user = await User.findById(userId);
-    
+
     user.otp_expiry_time = otp_expiry_time;
     user.otp = new_otp.toString();
 
@@ -67,11 +67,11 @@ exports.sendOTP = async (req, res, next) => {
         subject: "OTP for Chat App",
         text: `Your OTP is ${new_otp}. This is valid for 10 minutes`,
     })
-    .then(() =>{})
-    .catch((err) => {
-        console.log("Error sending otp");
-        console.log(err);
-    })
+        .then(() => { })
+        .catch((err) => {
+            console.log("Error sending otp");
+            console.log(err);
+        })
 
     res.status(200).json({
         status: "success",
@@ -117,6 +117,7 @@ exports.verifyOTP = async (req, res, next) => {
         status: "success",
         message: "OTP verified successfully!",
         token,
+        user_id: user._id
     })
 }
 
@@ -196,7 +197,7 @@ exports.protect = async (req, res, next) => {
 
 exports.forgotPassword = async (req, res, next) => {
     // 1. Get users email
-    const {email} = req.body;
+    const { email } = req.body;
     const userDoc = await User.findOne({ email: email })
 
     if (!userDoc) {
@@ -210,7 +211,7 @@ exports.forgotPassword = async (req, res, next) => {
     // 2. Generate the random reset token
     const resetToken = await userDoc.createPasswordResetToken();
 
-    console.log(resetToken);    
+    console.log(resetToken);
 
     await userDoc.save({ validateBeforeSave: false });
 
@@ -235,8 +236,8 @@ exports.forgotPassword = async (req, res, next) => {
 }
 
 exports.resetPassword = async (req, res, next) => {
-    const {token} = req.query;
-    const {password, passwordConfirm} = req.body;
+    const { token } = req.query;
+    const { password, passwordConfirm } = req.body;
     console.log(token, password, passwordConfirm);
 
     // 1. Get user based on token
