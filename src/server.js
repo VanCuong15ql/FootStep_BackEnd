@@ -26,7 +26,7 @@ mongoose.connect(DB, {
     // userCreateIndex: true,
     // userFindAndModify: false,
     // useUnifiedToplogy: true
-    dbName: "chat-online-app"
+    dbName: "chat-app-yt"
 }).then((con) => {
     console.log("DB connection is successful");
 }).catch((err) => {
@@ -38,14 +38,20 @@ server.listen(PORT, () => {
 });
 
 io.on("connection", async (socket) => {
-    console.log(socket)
+    console.log(JSON.stringify(socket.handshake.query));
     const user_id = socket.handshake.query["user_id"];
 
-    const socket_id = socket.id;
+    console.log(`User connected ${socket.id}`);
 
-    console.log(`User connected ${socket_id}`);
-    if (Boolean(user_id)) {
-        await User.findByIdAndUpdate(user_id, { socket_id })
+    if (user_id != null && Boolean(user_id)) {
+        try {
+            await User.findByIdAndUpdate(user_id, {
+                socket_id: socket.id,
+                status: "Online",
+            });
+        } catch (e) {
+            console.log(e);
+        }
     }
 
     socket.on("friend_request", async (data) => {
@@ -107,6 +113,7 @@ io.on("connection", async (socket) => {
         // data: {to: from:}
     
         const { to, from } = data;
+        console.log("Start Conversation", data);
     
         // check if there is any existing conversation
     
@@ -167,7 +174,12 @@ io.on("connection", async (socket) => {
         };
     
         // fetch OneToOneMessage Doc & push a new message to existing conversation
-        const chat = await OneToOneMessage.findById(conversation_id);
+        const chat = await OneToOneMessage.findOne({
+            $or: [
+                { participants: [to, from] },
+                { participants: [from, to] },
+            ],
+        });
         chat.messages.push(new_message);
         // save to db`
         await chat.save({ new: true, validateModifiedOnly: true });
@@ -470,7 +482,5 @@ process.on("uncaughtException", (err) => {
 
 process.on("unhandledRejection", (err) => {
     console.log(err);
-    process.close(() => {
-        process.exit(1);
-    })
+    process.exit(1);
 })

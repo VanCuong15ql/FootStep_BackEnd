@@ -6,8 +6,8 @@ sgMail.setApiKey(SG_KEY);
 
 const sendSGMail = async (args) => {
     try {
-        const {from , to, subject, text, html} = args;
-        console.log(from, to, subject, text);
+        const {from , to, subject, html} = args;
+        console.log(from, to, subject);
 
         const msg = {
             from: from,

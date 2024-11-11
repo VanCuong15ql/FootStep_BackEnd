@@ -8,18 +8,25 @@ const filterObj = require("../utils/filterObj");
 
 const { generateToken04 } = require("./zegoServerAssistant");
 
-const {ZEGO_APP_ID, ZEGO_SERVER_SECRET} = require("../config/secrets");
+const jwt = require("jsonwebtoken");
+
+const {ZEGO_APP_ID, ZEGO_SERVER_SECRET, JWT_SECRET} = require("../config/secrets");
+
+async function getUser(authorization) {
+    const token = authorization.split(" ")[1];
+    const decoded = jwt.verify(token, JWT_SECRET);
+    return (await User.findById(decoded.userId));
+}
 
 exports.getMe = catchAsync(async (req, res, next) => {
     res.status(200).json({
       status: "success",
-      data: req.user,
+      data: await getUser(req.headers.authorization),
     });
 });
 
 exports.updateMe = catchAsync(async (req, res, next) => {
-
-    const { user } = req;
+    const user = await getUser(req.headers.authorization);
 
     const filteredBody = filterObj(
         req.body,
@@ -41,32 +48,34 @@ exports.updateMe = catchAsync(async (req, res, next) => {
 });
 
 exports.getAllVerifiedUsers = catchAsync(async (req, res, next) => {
+    const user = await getUser(req.headers.authorization);
+
     const all_users = await User.find({
-      verified: true,
+        verified: true,
     }).select("firstName lastName _id");
   
     const remaining_users = all_users.filter(
-      (user) => user._id.toString() !== req.user._id.toString()
+        (user) => user._id.toString() !== user._id.toString()
     );
   
     res.status(200).json({
-      status: "success",
-      data: remaining_users,
-      message: "Users found successfully!",
+        status: "success",
+        data: remaining_users,
+        message: "Users found successfully!",
     });
 });
 
 exports.getUsers = catchAsync(async (req, res, next) => {
+    const this_user = await getUser(req.headers.authorization);
+
     const all_users = await User.find({
         verified: true,
     }).select("firstName lastName _id");
 
-    const this_user = req.user;
-
     const remaining_users = all_users.filter(
         (user) =>
             !this_user.friends.includes(user._id) &&
-            user._id.toString() !== req.user._id.toString()
+            user._id.toString() !== this_user._id.toString()
     );
 
     res.status(200).json({
@@ -76,25 +85,29 @@ exports.getUsers = catchAsync(async (req, res, next) => {
     });
 });
 
-exports.getRequests = async (req, res, next) => {
-    const requests = await FriendRequest.find({ recipient: req.user._id }).populate("sender", "_id firstName lastName");
+exports.getRequests = catchAsync( async (req, res, next) => {
+    const user = await getUser(req.headers.authorization);
+
+    const requests = await FriendRequest.find({ recipient: user._id }).populate("sender", "_id firstName lastName");
 
     res.status(200).json({
         status: "success",
         data: requests,
         message: "Friends requests Found successfully!",
     });
-}
+})
 
-exports.getFriends = async (req, res, next) => {
-    const this_user = await User.findById(req.user._id).populate("friends", "_id firstName lastName");
+exports.getFriends = catchAsync( async (req, res, next) => {
+    const user = await getUser(req.headers.authorization);
+
+    const this_user = await User.findById(user._id).populate("friends", "_id firstName lastName");
 
     res.status(200).json({
         status: "success",
         data: this_user.friends,
         message: "Friends Found successfully!",
     });
-}
+})
 
 /**
  *** Authorization authentication token generation
@@ -102,40 +115,41 @@ exports.getFriends = async (req, res, next) => {
 
 exports.generateZegoToken = catchAsync(async (req, res, next) => {
     try {
-    const { userId, room_id } = req.body;
+        const { userId, room_id } = req.body;
 
-    console.log(userId, room_id, "from generate zego token");
+        console.log(userId, room_id, "from generate zego token");
 
-    const effectiveTimeInSeconds = 3600; 
-    const payloadObject = {
-        room_id, 
-        privilege: {
-            1: 1, // loginRoom: 1 pass , 0 not pass
-            2: 1, // publishStream: 1 pass , 0 not pass
-        },
-        stream_id_list: null,
-    }; //
-    const payload = JSON.stringify(payloadObject);
-    // Build token
-    const token = generateToken04(
-        ZEGO_APP_ID * 1, // APP ID NEEDS TO BE A NUMBER
-        userId,
-        ZEGO_SERVER_SECRET,
-        effectiveTimeInSeconds,
-        payload
-    );
-    res.status(200).json({
-        status: "success",
-        message: "Token generated successfully",
-        token,
-    });
+        const effectiveTimeInSeconds = 3600; 
+        const payloadObject = {
+            room_id, 
+            privilege: {
+                1: 1, // loginRoom: 1 pass , 0 not pass
+                2: 1, // publishStream: 1 pass , 0 not pass
+            },
+            stream_id_list: null,
+        }; //
+        const payload = JSON.stringify(payloadObject);
+        // Build token
+        const token = generateToken04(
+            ZEGO_APP_ID * 1, // APP ID NEEDS TO BE A NUMBER
+            userId,
+            ZEGO_SERVER_SECRET,
+            effectiveTimeInSeconds,
+            payload
+        );
+        res.status(200).json({
+            status: "success",
+            message: "Token generated successfully",
+            token,
+        });
     } catch (err) {
         console.log(err);
     }
 });
   
 exports.startAudioCall = catchAsync(async (req, res, next) => {
-    const from = req.user._id;
+    const user = await getUser(req.headers.authorization);
+    const from = user._id;
     const to = req.body.id;
 
     const from_user = await User.findById(from);
@@ -161,7 +175,8 @@ exports.startAudioCall = catchAsync(async (req, res, next) => {
 });
   
 exports.startVideoCall = catchAsync(async (req, res, next) => {
-    const from = req.user._id;
+    const user = await getUser(req.headers.authorization);
+    const from = user._id;
     const to = req.body.id;
   
     const from_user = await User.findById(from);
@@ -187,7 +202,8 @@ exports.startVideoCall = catchAsync(async (req, res, next) => {
 });
   
 exports.getCallLogs = catchAsync(async (req, res, next) => {
-    const user_id = req.user._id;
+    const user = await getUser(req.headers.authorization);
+    const user_id = user._id;
 
     const call_logs = [];
 
