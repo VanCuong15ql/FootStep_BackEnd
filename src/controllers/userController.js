@@ -1,5 +1,7 @@
 const FriendRequest = require("../models/friendRequest");
 const User = require("../models/user");
+const catchAsync = require("../utils/catchAsync");
+const filterObj = require("../utils/filterObj");
 
 exports.updateMe = async (req, res, next) => {
 

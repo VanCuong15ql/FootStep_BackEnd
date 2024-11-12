@@ -9,6 +9,8 @@ const User = require("../models/user");
 const { JWT_SECRET, MAILER } = require("../config/secrets");
 const filterObj = require("../utils/filterObj");
 const { promisify } = require("util");
+const resetPassword = require("../Templates/Mail/resetPassword");
+const catchAsync = require("../utils/catchAsync");
 
 const signToken = (userId) => jwt.sign({ userId }, JWT_SECRET);
 
@@ -77,6 +79,8 @@ exports.sendOTP = async (req, res, next) => {
         status: "success",
         message: "OTP Sent Successfully!"
     })
+
+    console.log(new_otp)
 }
 
 exports.verifyOTP = async (req, res, next) => {
@@ -132,7 +136,7 @@ exports.login = async (req, res, next) => {
 
     const userDoc = await User.findOne({ email: email }).select("+password");
 
-    if (!User || !(await userDoc.correctPassword(password, userDoc.password))) {
+    if (!userDoc || !(await userDoc.correctPassword(password, userDoc.password))) {
         res.status(400).json({
             status: "error",
             message: "Email or password is incorrect",
@@ -195,53 +199,115 @@ exports.protect = async (req, res, next) => {
     next();
 }
 
-exports.forgotPassword = async (req, res, next) => {
-    // 1. Get users email
-    const { email } = req.body;
-    const userDoc = await User.findOne({ email: email })
-
-    if (!userDoc) {
-        res.status(400).json({
+exports.forgotPassword = catchAsync(async (req, res, next) => {
+    // 1) Get user based on POSTed email
+    const user = await User.findOne({ email: req.body.email });
+    if (!user) {
+        return res.status(404).json({
             status: "error",
-            message: "There is no user with given email address"
+            message: "There is no user with email address.",
         });
-        return;
     }
 
-    // 2. Generate the random reset token
-    const resetToken = await userDoc.createPasswordResetToken();
+    // 2) Generate the random reset token
+    const resetToken = await user.createPasswordResetToken();
+    await user.save({ validateBeforeSave: false });
 
-    console.log(resetToken);
-
-    await userDoc.save({ validateBeforeSave: false });
-
+    // 3) Send it to user's email
     try {
-        const URL = `http://localhost:3000/auth/reset-password/?token=${resetToken}`;
-        //TODO => Send Email With Reset URL
+        const resetURL = `http://localhost:3000/auth/new-password?token=${resetToken}`;
+        // TODO => Send Email with this Reset URL to user's email address
+
+        console.log(resetURL);
+
+        const resetPasswordHtml = resetPassword(user.firstName, resetURL);
+
+        // mailService.sendEmail({
+        //     from: MAILER,
+        //     to: user.email,
+        //     subject: "Reset Password",
+        //     html: resetPasswordHtml,
+        //     attachments: [],
+        // });
+
         res.status(200).json({
             status: "success",
-            message: "Reset Password link sent to Email"
-        })
-    } catch (error) {
-        userDoc.passwordResetToken = undefined
-        userDoc.passwordResetExpires = undefined
+            message: "Token sent to email!",
+        });
+    } catch (err) {
+        user.passwordResetToken = undefined;
+        user.passwordResetExpires = undefined;
+        await user.save({ validateBeforeSave: false });
 
-        await userDoc.save({ validateBeforeSave: false });
-
-        res.status(500).json({
-            status: "error",
-            message: "There was an error sending email, Please try again later."
-        })
+        return res.status(500).json({
+            message: "There was an error sending the email. Try again later!",
+        });
     }
-}
+});
+
+// exports.forgotPassword = async (req, res, next) => {
+//     // 1. Get users email
+//     const { email } = req.body;
+//     const userDoc = await User.findOne({ email: email })
+
+//     if (!userDoc) {
+//         res.status(400).json({
+//             status: "error",
+//             message: "There is no user with given email address"
+//         });
+//         return;
+//     }
+
+//     // 2. Generate the random reset token
+//     const resetToken = await userDoc.createPasswordResetToken();
+
+//     console.log(resetToken);
+
+//     await userDoc.save({ validateBeforeSave: false });
+
+//     try {
+//         const URL = `http://localhost:3000/auth/new-password?token=${resetToken}`;
+//         //TODO => Send Email With Reset URL
+
+//         mailService.sendEmail({
+//             from: MAILER,
+//             to: userDoc.email,
+//             subject: "Reset Password",
+//             html: resetPassword(userDoc.firstName, URL),
+//             attachments: [],
+//         })
+//             .then(() => { })
+//             .catch((err) => {
+//                 console.log("Error sending Email");
+//                 console.log(err);
+//             });
+
+
+//         res.status(200).json({
+//             status: "success",
+//             message: "Reset Password link sent to Email"
+//         })
+//     } catch (error) {
+//         userDoc.passwordResetToken = undefined
+//         userDoc.passwordResetExpires = undefined
+
+//         await userDoc.save({ validateBeforeSave: false });
+
+//         res.status(500).json({
+//             status: "error",
+//             message: "There was an error sending email, Please try again later."
+//         })
+//     }
+// }
 
 exports.resetPassword = async (req, res, next) => {
     const { token } = req.query;
     const { password, passwordConfirm } = req.body;
     console.log(token, password, passwordConfirm);
 
+
     // 1. Get user based on token
-    const hashedToken = crypto.createHash("sha256").update(token).digest("hex")
+    const hashedToken = crypto.createHash("sha256").update(req.body.token).digest("hex")
 
     const user = await User.findOne({ passwordResetToken: hashedToken, passwordResetExpires: { $gt: Date.now() } });
 
