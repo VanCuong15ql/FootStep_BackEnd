@@ -6,6 +6,9 @@ const mailService = require("../services/mailer");
 
 const User = require("../models/user");
 
+const otpPattern = require("../pattern/otpPattern");
+const resetPasswordPattern = require("../pattern/resetPasswordPattern");
+
 const { JWT_SECRET, MAILER } = require("../config/secrets");
 const filterObj = require("../utils/filterObj");
 const { promisify } = require("util");
@@ -65,7 +68,8 @@ exports.sendOTP = async (req, res, next) => {
         from: MAILER,
         to: user.email,
         subject: "OTP for Chat App",
-        text: `Your OTP is ${new_otp}. This is valid for 10 minutes`,
+        // text: `Your OTP is ${new_otp}. This is valid for 10 minutes`,
+        html: otpPattern(user.firstName, new_otp)
     })
         .then(() => { })
         .catch((err) => {
@@ -145,6 +149,7 @@ exports.login = async (req, res, next) => {
         status: "success",
         message: "Logged in successfully",
         token,
+        user_id: userDoc._id
     })
 }
 
@@ -170,6 +175,8 @@ exports.protect = async (req, res, next) => {
 
     // 2. Verification 
     const decode = await promisify(jwt.verify)(token, JWT_SECRET);
+
+    console.log(decode);
 
     // 3. Check if user still exist
 
@@ -216,17 +223,28 @@ exports.forgotPassword = async (req, res, next) => {
     await userDoc.save({ validateBeforeSave: false });
 
     try {
-        const URL = `http://localhost:3000/auth/reset-password/?token=${resetToken}`;
+        const resetURL = `http://localhost:3000/auth/new-password/?token=${resetToken}`;
+        console.log(resetURL);
+
         //TODO => Send Email With Reset URL
+        mailService.sendEmail({
+            from: process.env.MAILER,
+            to: userDoc.email,
+            subject: "Reset Password",
+            html: resetPasswordPattern(userDoc.firstName, resetURL),
+        });
+
         res.status(200).json({
             status: "success",
-            message: "Reset Password link sent to Email"
+            message: "Token sent to email!",
         })
     } catch (error) {
         userDoc.passwordResetToken = undefined
         userDoc.passwordResetExpires = undefined
 
         await userDoc.save({ validateBeforeSave: false });
+
+        console.log(error);
 
         res.status(500).json({
             status: "error",
@@ -272,7 +290,7 @@ exports.resetPassword = async (req, res, next) => {
     res.status(200).json({
         status: "success",
         message: "Password Reseted Successfully",
-        tokenSign,
+        token: tokenSign,
     })
 
 }

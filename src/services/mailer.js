@@ -6,14 +6,15 @@ sgMail.setApiKey(SG_KEY);
 
 const sendSGMail = async (args) => {
     try {
-        const {from , to, subject, text} = args;
-        console.log(from, to, subject, text);
+        const {from , to, subject, html} = args;
+        console.log(from, to, subject);
 
         const msg = {
             from: from,
             to: to,
             subject: subject,
-            text: text,
+            // text: text,
+            html: html
         }
 
         return sgMail.send(msg);
