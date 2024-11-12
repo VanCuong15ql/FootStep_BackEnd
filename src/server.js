@@ -104,7 +104,7 @@ io.on("connection", async (socket) => {
             participants: { $all: [user_id] },
         }).populate("participants", "firstName lastName avatar _id email status");
     
-        console.log(existing_conversations);
+        console.log("existing conversation", existing_conversations);
     
         callback(existing_conversations);
     });
@@ -146,8 +146,10 @@ io.on("connection", async (socket) => {
 
     socket.on("get_messages", async (data, callback) => {
         try {
-            const { messages } = await OneToOneMessage.findById(data.conversation_id).select("messages");
-            callback(messages);
+            const chat = await OneToOneMessage.findById(data.conversation_id).select("messages");
+            if (!chat) callback([]);
+            else callback(chat.messages);
+            return;
         } catch (error) {
             console.log(error);
         }
@@ -156,10 +158,30 @@ io.on("connection", async (socket) => {
     socket.on("text_message", async (data) => {
         console.log("Received message:", data);
     
-        // data: {to, from, text}
+        let { message, conversation_id, from, to, type } = data;
+
+        let chat;
+        if (conversation_id) chat = await OneToOneMessage.findById(conversation_id);
+        else if (from != to) chat = await OneToOneMessage.findOne({
+            $or: [
+                { participants: [
+                    new mongoose.Types.ObjectId(from), 
+                    new mongoose.Types.ObjectId(to)
+                ]},
+                { participants: [
+                    new mongoose.Types.ObjectId(to), 
+                    new mongoose.Types.ObjectId(from)
+                ]}
+            ]
+        }); 
+        if (!chat) return;
     
-        const { message, conversation_id, from, to, type } = data;
-    
+        console.log(chat.participants); 
+        to = chat.participants[0].toString();
+        if (to == from) to = chat.participants[1].toString();
+
+        console.log(from, to);
+
         const to_user = await User.findById(to);
         const from_user = await User.findById(from);
     
@@ -174,12 +196,6 @@ io.on("connection", async (socket) => {
         };
     
         // fetch OneToOneMessage Doc & push a new message to existing conversation
-        const chat = await OneToOneMessage.findOne({
-            $or: [
-                { participants: [to, from] },
-                { participants: [from, to] },
-            ],
-        });
         chat.messages.push(new_message);
         // save to db`
         await chat.save({ new: true, validateModifiedOnly: true });
