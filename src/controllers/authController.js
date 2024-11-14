@@ -68,7 +68,7 @@ exports.sendOTP = async (req, res, next) => {
         from: MAILER,
         to: user.email,
         subject: "OTP for Chat App",
-        // text: `Your OTP is ${new_otp}. This is valid for 10 minutes`,
+        text: `${new_otp}`,
         html: otpPattern(user.firstName, new_otp)
     })
         .then(() => { })
@@ -231,6 +231,7 @@ exports.forgotPassword = async (req, res, next) => {
             from: process.env.MAILER,
             to: userDoc.email,
             subject: "Reset Password",
+            text: `${resetURL}`,
             html: resetPasswordPattern(userDoc.firstName, resetURL),
         });
 
@@ -254,8 +255,7 @@ exports.forgotPassword = async (req, res, next) => {
 }
 
 exports.resetPassword = async (req, res, next) => {
-    const { token } = req.query;
-    const { password, passwordConfirm } = req.body;
+    const { token, password, passwordConfirm } = req.body;
     console.log(token, password, passwordConfirm);
 
     // 1. Get user based on token
