@@ -103,39 +103,39 @@ io.on("connection", async (socket) => {
         const existing_conversations = await OneToOneMessage.find({
             participants: { $all: [user_id] },
         }).populate("participants", "firstName lastName avatar _id email status");
-    
+
         console.log("existing conversation", existing_conversations);
-    
+
         callback(existing_conversations);
     });
 
     socket.on("start_conversation", async (data) => {
         // data: {to: from:}
-    
+
         const { to, from } = data;
         console.log("Start Conversation", data);
-    
+
         // check if there is any existing conversation
-    
+
         const existing_conversations = await OneToOneMessage.find({
             participants: { $size: 2, $all: [to, from] },
         }).populate("participants", "firstName lastName _id email status");
-    
+
         console.log(existing_conversations[0], "Existing Conversation");
-    
+
         // if no => create a new OneToOneMessage doc & emit event "start_chat" & send conversation details as payload
         if (existing_conversations.length === 0) {
             let new_chat = await OneToOneMessage.create({
                 participants: [to, from],
             });
-        
+
             new_chat = await OneToOneMessage.findById(new_chat).populate(
                 "participants",
                 "firstName lastName _id email status"
             );
-        
+
             console.log(new_chat);
-        
+
             socket.emit("start_chat", new_chat);
         }
         // if yes => just emit event "start_chat" & send conversation details as payload
@@ -156,37 +156,11 @@ io.on("connection", async (socket) => {
     });
 
     socket.on("text_message", async (data) => {
-        console.log("Received message:", data);
-    
-        let { message, conversation_id, from, to, type } = data;
-
-        let chat;
-        if (conversation_id) chat = await OneToOneMessage.findById(conversation_id);
-        else if (from != to) chat = await OneToOneMessage.findOne({
-            $or: [
-                { participants: [
-                    new mongoose.Types.ObjectId(from), 
-                    new mongoose.Types.ObjectId(to)
-                ]},
-                { participants: [
-                    new mongoose.Types.ObjectId(to), 
-                    new mongoose.Types.ObjectId(from)
-                ]}
-            ]
-        }); 
-        if (!chat) return;
-    
-        console.log(chat.participants); 
-        to = chat.participants[0].toString();
-        if (to == from) to = chat.participants[1].toString();
-
-        console.log(from, to);
-
+        console.log("Recived message: ", data);
+        const { message, conversation_id, from, to, type } = data;
         const to_user = await User.findById(to);
         const from_user = await User.findById(from);
-    
-        // message => {to, from, type, created_at, text, file}
-    
+
         const new_message = {
             to: to,
             from: from,
@@ -194,45 +168,108 @@ io.on("connection", async (socket) => {
             created_at: Date.now(),
             text: message,
         };
-    
-        // fetch OneToOneMessage Doc & push a new message to existing conversation
+
+        const chat = await OneToOneMessage.findById(conversation_id);
         chat.messages.push(new_message);
-        // save to db`
-        await chat.save({ new: true, validateModifiedOnly: true });
-    
+
+        await chat.save({});
         // emit incoming_message -> to user
-    
-        io.to(to_user?.socket_id).emit("new_message", {
+
+        io.to(to_user.socket_id).emit("new_message", {
             conversation_id,
             message: new_message,
         });
-    
+
         // emit outgoing_message -> from user
-        io.to(from_user?.socket_id).emit("new_message", {
+        io.to(from_user.socket_id).emit("new_message", {
             conversation_id,
             message: new_message,
         });
-    });
+
+    })
+
+    // socket.on("text_message", async (data) => {
+    //     console.log("Received message:", data);
+
+    //     let { message, conversation_id, from, to, type } = data;
+
+    //     let chat;
+    //     if (conversation_id) chat = await OneToOneMessage.findById(conversation_id);
+    //     else if (from != to) chat = await OneToOneMessage.findOne({
+    //         $or: [
+    //             {
+    //                 participants: [
+    //                     new mongoose.Types.ObjectId(from),
+    //                     new mongoose.Types.ObjectId(to)
+    //                 ]
+    //             },
+    //             {
+    //                 participants: [
+    //                     new mongoose.Types.ObjectId(to),
+    //                     new mongoose.Types.ObjectId(from)
+    //                 ]
+    //             }
+    //         ]
+    //     });
+    //     if (!chat) return;
+
+    //     console.log(chat.participants);
+    //     to = chat.participants[0].toString();
+    //     if (to == from) to = chat.participants[1].toString();
+
+    //     console.log(from, to);
+
+    //     const to_user = await User.findById(to);
+    //     const from_user = await User.findById(from);
+
+    //     // message => {to, from, type, created_at, text, file}
+
+    //     const new_message = {
+    //         to: to,
+    //         from: from,
+    //         type: type,
+    //         created_at: Date.now(),
+    //         text: message,
+    //     };
+
+    //     // fetch OneToOneMessage Doc & push a new message to existing conversation
+    //     chat.messages.push(new_message);
+    //     // save to db`
+    //     await chat.save({ new: true, validateModifiedOnly: true });
+
+    //     // emit incoming_message -> to user
+
+    //     io.to(to_user?.socket_id).emit("new_message", {
+    //         conversation_id,
+    //         message: new_message,
+    //     });
+
+    //     // emit outgoing_message -> from user
+    //     io.to(from_user?.socket_id).emit("new_message", {
+    //         conversation_id,
+    //         message: new_message,
+    //     });
+    // });
 
     socket.on("file_message", (data) => {
         console.log("Received message:", data);
-    
+
         // data: {to, from, text, file}
-    
+
         // Get the file extension
         const fileExtension = path.extname(data.file.name);
-    
+
         // Generate a unique filename
         const filename = `${Date.now()}_${Math.floor(Math.random() * 10000)}${fileExtension}`;
-    
+
         // upload file to AWS s3
-    
+
         // create a new conversation if its dosent exists yet or add a new message to existing conversation
-    
+
         // save to db
-    
+
         // emit incoming_message -> to user
-    
+
         // emit outgoing_message -> from user
     });
 
@@ -270,10 +307,10 @@ io.on("connection", async (socket) => {
             {
                 participants: { $size: 2, $all: [to, from] },
             },
-            { 
-                verdict: "Missed", 
-                status: "Ended", 
-                endedAt: Date.now() 
+            {
+                verdict: "Missed",
+                status: "Ended",
+                endedAt: Date.now()
             }
         );
 
@@ -295,8 +332,8 @@ io.on("connection", async (socket) => {
             {
                 participants: { $size: 2, $all: [to, from] },
             },
-            {   
-                verdict: "Accepted" 
+            {
+                verdict: "Accepted"
             }
         );
 
@@ -316,10 +353,10 @@ io.on("connection", async (socket) => {
             {
                 participants: { $size: 2, $all: [to, from] },
             },
-            {   
-                verdict: "Denied", 
-                status: "Ended", 
-                endedAt: Date.now() 
+            {
+                verdict: "Denied",
+                status: "Ended",
+                endedAt: Date.now()
             }
         );
 
@@ -337,14 +374,14 @@ io.on("connection", async (socket) => {
         const { to, from } = data;
         // find and update call record
         await AudioCall.findOneAndUpdate(
-        {
-            participants: { $size: 2, $all: [to, from] },
-        },
-        { 
-            verdict: "Busy", 
-            status: "Ended", 
-            endedAt: Date.now() 
-        }
+            {
+                participants: { $size: 2, $all: [to, from] },
+            },
+            {
+                verdict: "Busy",
+                status: "Ended",
+                endedAt: Date.now()
+            }
         );
 
         const from_user = await User.findById(from);
@@ -390,10 +427,10 @@ io.on("connection", async (socket) => {
             {
                 participants: { $size: 2, $all: [to, from] },
             },
-            { 
-                verdict: "Missed", 
-                status: "Ended", 
-                endedAt: Date.now() 
+            {
+                verdict: "Missed",
+                status: "Ended",
+                endedAt: Date.now()
             }
         );
 
@@ -415,8 +452,8 @@ io.on("connection", async (socket) => {
             {
                 participants: { $size: 2, $all: [to, from] },
             },
-            { 
-                verdict: "Accepted" 
+            {
+                verdict: "Accepted"
             }
         );
 
@@ -436,10 +473,10 @@ io.on("connection", async (socket) => {
             {
                 participants: { $size: 2, $all: [to, from] },
             },
-            { 
-                verdict: "Denied", 
-                status: "Ended", 
-                endedAt: Date.now() 
+            {
+                verdict: "Denied",
+                status: "Ended",
+                endedAt: Date.now()
             }
         );
 
@@ -460,10 +497,10 @@ io.on("connection", async (socket) => {
             {
                 participants: { $size: 2, $all: [to, from] },
             },
-            { 
-                verdict: "Busy", 
-                status: "Ended", 
-                endedAt: Date.now() 
+            {
+                verdict: "Busy",
+                status: "Ended",
+                endedAt: Date.now()
             }
         );
 
@@ -481,7 +518,7 @@ io.on("connection", async (socket) => {
         // Find user by ID and set status as offline
 
         if (data.user_id) {
-        await User.findByIdAndUpdate(data.user_id, { status: "Offline" });
+            await User.findByIdAndUpdate(data.user_id, { status: "Offline" });
         }
 
         // broadcast to all conversation rooms of this user that this user is offline (disconnected)

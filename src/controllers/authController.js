@@ -64,18 +64,20 @@ exports.sendOTP = async (req, res, next) => {
 
     await user.save({ new: true, validateModifiedOnly: true });
 
-    mailService.sendEmail({
-        from: MAILER,
-        to: user.email,
-        subject: "OTP for Chat App",
-        // text: `Your OTP is ${new_otp}. This is valid for 10 minutes`,
-        html: otpPattern(user.firstName, new_otp)
-    })
-        .then(() => { })
-        .catch((err) => {
-            console.log("Error sending otp");
-            console.log(err);
-        })
+    console.log(new_otp)
+
+    // mailService.sendEmail({
+    //     from: MAILER,
+    //     to: user.email,
+    //     subject: "OTP for Chat App",
+    //     // text: `Your OTP is ${new_otp}. This is valid for 10 minutes`,
+    //     html: otpPattern(user.firstName, new_otp)
+    // })
+    //     .then(() => { })
+    //     .catch((err) => {
+    //         console.log("Error sending otp");
+    //         console.log(err);
+    //     })
 
     res.status(200).json({
         status: "success",
@@ -136,7 +138,7 @@ exports.login = async (req, res, next) => {
 
     const userDoc = await User.findOne({ email: email }).select("+password");
 
-    if (!User || !(await userDoc.correctPassword(password, userDoc.password))) {
+    if (!userDoc || !(await userDoc.correctPassword(password, userDoc.password))) {
         res.status(400).json({
             status: "error",
             message: "Email or password is incorrect",
@@ -233,7 +235,6 @@ exports.forgotPassword = async (req, res, next) => {
             subject: "Reset Password",
             html: resetPasswordPattern(userDoc.firstName, resetURL),
         });
-
         res.status(200).json({
             status: "success",
             message: "Token sent to email!",
