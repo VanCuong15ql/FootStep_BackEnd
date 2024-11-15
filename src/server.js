@@ -134,7 +134,7 @@ io.on("connection", async (socket) => {
                 "firstName lastName _id email status"
             );
 
-            console.log(new_chat);
+            console.log(new_chat, "new chat");
 
             socket.emit("start_chat", new_chat);
         }
