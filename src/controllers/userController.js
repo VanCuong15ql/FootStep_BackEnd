@@ -48,14 +48,14 @@ exports.updateMe = catchAsync(async (req, res, next) => {
 });
 
 exports.getAllVerifiedUsers = catchAsync(async (req, res, next) => {
-    const user = await getUser(req.headers.authorization);
+    const current_user = await getUser(req.headers.authorization);
 
     const all_users = await User.find({
         verified: true,
     }).select("firstName lastName _id");
   
     const remaining_users = all_users.filter(
-        (user) => user._id.toString() !== user._id.toString()
+        (user) => user._id.toString() !== current_user._id.toString()
     );
   
     res.status(200).json({

@@ -8,6 +8,7 @@ const server = http.createServer(app);
 const User = require('./models/user');
 const FriendRequest = require('./models/friendRequest');
 const OneToOneMessage = require("./models/OneToOneMessage");
+const GroupMessage = require("./models/GroupMessage");
 const AudioCall = require("./models/audioCall");
 const VideoCall = require("./models/videoCall");
 
@@ -15,8 +16,8 @@ const { Server } = require("socket.io");
 
 const io = new Server(server, {
     cors: {
-        origin: "http://localhost:3000",
-        methods: ["GET", "POST"]
+        origin: "*",
+        methods: ["GET", "PATCH", "POST", "PUT", "DELETE"],
     }
 });
 
@@ -99,6 +100,8 @@ io.on("connection", async (socket) => {
         });
     });
 
+    // -------------- HANDLE ONE TO ONE MESSAGES SOCKET EVENTS ------------------------------------------------------------------------- //
+
     socket.on("get_direct_conversations", async ({ user_id }, callback) => {
         const existing_conversations = await OneToOneMessage.find({
             participants: { $all: [user_id] },
@@ -163,16 +166,12 @@ io.on("connection", async (socket) => {
         let chat;
         if (conversation_id) chat = await OneToOneMessage.findById(conversation_id);
         else if (from != to) chat = await OneToOneMessage.findOne({
-            $or: [
-                { participants: [
+            participants: { 
+                $all: [
                     new mongoose.Types.ObjectId(from), 
                     new mongoose.Types.ObjectId(to)
-                ]},
-                { participants: [
-                    new mongoose.Types.ObjectId(to), 
-                    new mongoose.Types.ObjectId(from)
-                ]}
-            ]
+                ]
+            },
         }); 
         if (!chat) return;
     
@@ -236,8 +235,121 @@ io.on("connection", async (socket) => {
         // emit outgoing_message -> from user
     });
 
+    // -------------- HANDLE GROUP MESSAGES SOCKET EVENTS ---------------------------------------------------------------------------------- //
+    socket.on("get_direct_conversations_group", async ({ user_id }, callback) => {
+        const existing_conversations = await GroupMessage.find({
+            participants: { $all: [user_id] },
+        }).populate("participants", "firstName lastName avatar _id email status");
+    
+        console.log("existing conversation", existing_conversations);
+    
+        callback(existing_conversations);
+    });
 
-    // -------------- HANDLE AUDIO CALL SOCKET EVENTS ----------------- //
+    socket.on("start_conversation_group", async (data) => {
+        // data: {to: from:}
+    
+        const { participants } = data;
+        console.log("Start Conversation", data);
+    
+        // check if there is any existing conversation
+    
+        const existing_conversations = await GroupMessage.find({
+            participants: { $size: participants.length, $all: participants },
+        }).populate("participants", "firstName lastName _id email status");
+    
+        console.log(existing_conversations[0], "Existing Conversation");
+    
+        // if no => create a new GroupMessage doc & emit event "start_chat" & send conversation details as payload
+        if (existing_conversations.length === 0) {
+            let new_chat = await GroupMessage.create({
+                participants: participants,
+            });
+        
+            new_chat = await GroupMessage.findById(new_chat).populate(
+                "participants",
+                "firstName lastName _id email status"
+            );
+        
+            console.log(new_chat);
+        
+            socket.emit("start_chat_group", new_chat);
+        }
+        // if yes => just emit event "start_chat" & send conversation details as payload
+        else {
+            socket.emit("start_chat_group", existing_conversations[0]);
+        }
+    });
+
+    socket.on("get_messages_group", async (data, callback) => {
+        try {
+            const chat = await GroupMessage.findById(data.conversation_id).select("messages");
+            if (!chat) callback([]);
+            else callback(chat.messages);
+            return;
+        } catch (error) {
+            console.log(error);
+        }
+    });
+
+    socket.on("text_message_group", async (data) => {
+        console.log("Received message:", data);
+    
+        let { message, conversation_id, participants, type } = data;
+
+        let chat;
+        if (conversation_id) chat = await GroupMessage.findById(conversation_id);
+        else if (from != to) chat = await GroupMessage.findOne({participants: { $size: participants.length, $all: participants }}); 
+        if (!chat) return;
+    
+        console.log(chat.participants); 
+        let users = [];
+        for (let user_id of participants) {
+            users.push(await User.findById(user_id));
+        }
+    
+        const new_message = {
+            from: from,
+            type: type,
+            created_at: Date.now(),
+            text: message,
+        };
+        chat.messages.push(new_message);
+        await chat.save({ new: true, validateModifiedOnly: true });
+
+        // emit to user
+        for (let user of users) {
+            io.to(user?.socket_id).emit("new_message_group", {
+                conversation_id,
+                message: new_message
+            });
+        }
+    });
+
+    socket.on("file_message_group", (data) => {
+        console.log("Received message:", data);
+    
+        // data: {to, from, text, file}
+    
+        // Get the file extension
+        const fileExtension = path.extname(data.file.name);
+    
+        // Generate a unique filename
+        const filename = `${Date.now()}_${Math.floor(Math.random() * 10000)}${fileExtension}`;
+    
+        // upload file to AWS s3
+    
+        // create a new conversation if its dosent exists yet or add a new message to existing conversation
+    
+        // save to db
+    
+        // emit incoming_message -> to user
+    
+        // emit outgoing_message -> from user
+    });
+
+
+    // -------------- HANDLE AUDIO CALL SOCKET EVENTS -------------------------------------------------------------------------------------- //
 
     // handle start_audio_call event
     socket.on("start_audio_call", async (data) => {
