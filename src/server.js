@@ -1,9 +1,13 @@
 const app = require('./app');
 const mongoose = require("mongoose")
-const { PORT, DB_URL, DB_PASSWORD } = require("./config/secrets")
+const { PORT, DB_URL, DB_PASSWORD, S3_BUCKET_NAME, AWS_S3_REGION, AWS_ACCESS_KEY, AWS_SECRET_ACCESS_KEY } = require("./config/secrets")
 
 const http = require('http');
 const server = http.createServer(app);
+
+require('aws-sdk/lib/maintenance_mode_message').suppress = true;
+const AWS = require('aws-sdk');
+const fs = require('fs');
 
 const User = require('./models/user');
 const FriendRequest = require('./models/friendRequest');
@@ -213,26 +217,73 @@ io.on("connection", async (socket) => {
         });
     });
 
-    socket.on("file_message", (data) => {
+    socket.on("file_message", async (data) => {
         console.log("Received message:", data);
     
-        // data: {to, from, text, file}
+        // data: {to, from, file}
     
         // Get the file extension
-        const fileExtension = path.extname(data.file.name);
+        const fileNameOrigin = data.file.name ?? ".txt";
     
         // Generate a unique filename
-        const filename = `${Date.now()}_${Math.floor(Math.random() * 10000)}${fileExtension}`;
+        const fileNameConfig = `${Number(Date.now())}_${fileNameOrigin}`;
     
         // upload file to AWS s3
-    
-        // create a new conversation if its dosent exists yet or add a new message to existing conversation
+        const fileStream = fs.createReadStream(data.file.path);
+        fileStream.on('error', function(err) {
+            console.log('File Error', err);
+        });
+        const params = {
+            Bucket: S3_BUCKET_NAME,
+            Key: fileNameConfig,
+            Body: fileStream,
+        };
+        const s3 = new AWS.S3({
+            region: AWS_S3_REGION,
+            accessKeyId: AWS_ACCESS_KEY,
+            secretAccessKey: AWS_SECRET_ACCESS_KEY, 
+        });
+        let location = "";
+        s3.upload(params, (err, data) => {
+            if (err) {
+                console.log('Error', err);
+            }
+            if (data) {
+                console.log('Uploaded in:', data.Location);
+                location = data.Location;
+            }
+        });
     
         // save to db
+        let chat = await OneToOneMessage.findOne({participants: { $size: 2, $all: [data.to, data.from] }});
+        if (!chat) return;
+        const new_message = {
+            to: data.to,
+            from: data.from,
+            type: "file",
+            created_at: Date.now(),
+            file: location,
+        };
+        chat.messages.push(new_message);
+        await chat.save({ new: true, validateModifiedOnly: true });
     
         // emit incoming_message -> to user
+        const to_user = await User.findById(data.to);
+        if (to_user) {
+            io.to(to_user.socket_id).emit("new_file_message", {
+                conversation_id: chat._id,
+                message: new_message,
+            });
+        }
     
         // emit outgoing_message -> from user
+        const from_user = await User.findById(data.from);
+        if (from_user) {
+            io.to(from_user.socket_id).emit("new_file_message", {
+                conversation_id: chat._id,
+                message: new_message,
+            });
+        }
     });
 
     // -------------- HANDLE GROUP MESSAGES SOCKET EVENTS ---------------------------------------------------------------------------------- //
@@ -295,11 +346,15 @@ io.on("connection", async (socket) => {
     socket.on("text_message_group", async (data) => {
         console.log("Received message:", data);
     
-        let { message, conversation_id, participants, type } = data;
+        let { message, from, conversation_id, participants } = data;
 
         let chat;
-        if (conversation_id) chat = await GroupMessage.findById(conversation_id);
-        else if (from != to) chat = await GroupMessage.findOne({participants: { $size: participants.length, $all: participants }}); 
+        if (conversation_id) {
+            chat = await GroupMessage.findById(conversation_id);
+            participants = chat.participants;
+        } else {
+            chat = await GroupMessage.findOne({participants: { $size: participants.length, $all: participants }}); 
+        }
         if (!chat) return;
     
         console.log(chat.participants); 
@@ -310,7 +365,7 @@ io.on("connection", async (socket) => {
     
         const new_message = {
             from: from,
-            type: type,
+            type: "text",
             created_at: Date.now(),
             text: message,
         };
@@ -326,26 +381,72 @@ io.on("connection", async (socket) => {
         }
     });
 
-    socket.on("file_message_group", (data) => {
+    socket.on("file_message_group", async (data) => {
         console.log("Received message:", data);
     
-        // data: {to, from, text, file}
+        // data: {from, conversation_id, participants, file}
+        let {from, conversation_id, participants, file} = data;
     
-        // Get the file extension
-        const fileExtension = path.extname(data.file.name);
+        // Get the file name
+        const fileNameOrigin = file.name ?? ".txt";
     
         // Generate a unique filename
-        const filename = `${Date.now()}_${Math.floor(Math.random() * 10000)}${fileExtension}`;
+        const fileNameConfig = `${Number(Date.now())}_${fileNameOrigin}`;
     
         // upload file to AWS s3
-    
-        // create a new conversation if its dosent exists yet or add a new message to existing conversation
+        const fileStream = fs.createReadStream(file.path);
+        fileStream.on('error', function(err) {
+            console.log('File Error', err);
+        });
+        const params = {
+            Bucket: S3_BUCKET_NAME,
+            Key: fileNameConfig,
+            Body: fileStream,
+        };
+        const s3 = new AWS.S3({
+            region: AWS_S3_REGION,
+            accessKeyId: AWS_ACCESS_KEY,
+            secretAccessKey: AWS_SECRET_ACCESS_KEY, 
+        });
+        let location = "";
+        s3.upload(params, (err, data) => {
+            if (err) {
+                console.log('Error', err);
+            }
+            if (data) {
+                console.log('Uploaded in:', data.Location);
+                location = data.Location;
+            }
+        });
     
         // save to db
+        let chat;
+        if (conversation_id) {
+            chat = await GroupMessage.findById(conversation_id);
+            participants = chat.participants;
+        } else {
+            chat = await GroupMessage.findOne({participants: { $size: participants.length, $all: participants }}); 
+        }
+        if (!chat) return;
+        const new_message = {
+            from: from,
+            type: "file",
+            created_at: Date.now(),
+            file: location,
+        };
+        chat.messages.push(new_message);
+        await chat.save({ new: true, validateModifiedOnly: true });
     
-        // emit incoming_message -> to user
-    
-        // emit outgoing_message -> from user
+        // emit incoming_message -> user
+        for(let participant of participants) {
+            const user = await User.findById(participant);
+            if (user) {
+                io.to(user.socket_id).emit("new_file_message_group", {
+                    conversation_id: chat._id,
+                    message: new_message,
+                });
+            }
+        }
     });
 
 
