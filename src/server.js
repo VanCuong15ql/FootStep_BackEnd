@@ -8,6 +8,7 @@ const server = http.createServer(app);
 require('aws-sdk/lib/maintenance_mode_message').suppress = true;
 const AWS = require('aws-sdk');
 const fs = require('fs');
+const path = require('path');
 
 const User = require('./models/user');
 const FriendRequest = require('./models/friendRequest');
@@ -17,6 +18,7 @@ const AudioCall = require("./models/audioCall");
 const VideoCall = require("./models/videoCall");
 
 const { Server } = require("socket.io");
+const { text } = require('body-parser');
 
 const io = new Server(server, {
     cors: {
@@ -218,71 +220,98 @@ io.on("connection", async (socket) => {
     });
 
     socket.on("file_message", async (data) => {
-        console.log("Received message:", data);
+        try {
+            console.log("Received message:", data);
     
-        // data: {to, from, file}
-    
-        // Get the file extension
-        const fileNameOrigin = data.file.name ?? ".txt";
-    
-        // Generate a unique filename
-        const fileNameConfig = `${Number(Date.now())}_${fileNameOrigin}`;
-    
-        // upload file to AWS s3
-        const fileStream = fs.createReadStream(data.file.path);
-        fileStream.on('error', function(err) {
-            console.log('File Error', err);
-        });
-        const params = {
-            Bucket: S3_BUCKET_NAME,
-            Key: fileNameConfig,
-            Body: fileStream,
-        };
-        const s3 = new AWS.S3({
-            region: AWS_S3_REGION,
-            accessKeyId: AWS_ACCESS_KEY,
-            secretAccessKey: AWS_SECRET_ACCESS_KEY, 
-        });
-        let location = "";
-        s3.upload(params, (err, data) => {
-            if (err) {
-                console.log('Error', err);
+            // data: {to, from, nameFile, file}
+            let { from, to, name_file, file } = data;
+        
+            // Generate a unique filename
+            const fileNameConfig = `${Number(Date.now())}_${name_file}`;
+
+            // Tạo đường dẫn
+            const uploadsDir = path.join(__dirname, 'uploads');
+            if (!fs.existsSync(uploadsDir)) {
+                fs.mkdirSync(uploadsDir);
             }
-            if (data) {
-                console.log('Uploaded in:', data.Location);
-                location = data.Location;
+            const filePath = path.join(uploadsDir, fileNameConfig);
+
+            // Ghi Buffer vào file
+            fs.writeFile(filePath, file, (err) => {
+                if (err) {
+                    console.error('Error saving file:', err);
+                } else {
+                    console.log(`File saved: ${filePath}`);
+                }
+            });
+        
+            // upload file to AWS s3
+            const fileStream = fs.createReadStream(filePath);
+            fileStream.on('error', function(err) {
+                console.log('File Error', err);
+            });
+            const params = {
+                Bucket: S3_BUCKET_NAME,
+                Key: fileNameConfig,
+                Body: fileStream,
+            };
+            const s3 = new AWS.S3({
+                region: AWS_S3_REGION,
+                accessKeyId: AWS_ACCESS_KEY,
+                secretAccessKey: AWS_SECRET_ACCESS_KEY, 
+            });
+            let location = "";
+            s3.upload(params, (err, data) => {
+                if (err) {
+                    console.log('Error', err);
+                }
+                if (data) {
+                    location = data.Location;
+                    console.log('Uploaded in:', data.Location);
+                }
+                // Xóa file
+                fs.unlink(filePath, (err) => {
+                    if (err) {
+                        console.error('Error deleting file:', err);
+                    } else {
+                        console.log(`File deleted: ${filePath}`);
+                    }
+                });
+            });
+        
+            // save to db
+            let chat = await OneToOneMessage.findOne({participants: { $size: 2, $all: [data.to, data.from] }});
+            if (!chat) return;
+            const new_message = {
+                to: data.to,
+                from: data.from,
+                type: "file",
+                created_at: Date.now(),
+                text: name_file,
+                file: location,
+            };
+            chat.messages.push(new_message);
+            await chat.save({ new: true, validateModifiedOnly: true });
+        
+            // emit incoming_message -> to user
+            const to_user = await User.findById(data.to);
+            if (to_user) {
+                io.to(to_user.socket_id).emit("new_file_message", {
+                    conversation_id: chat._id,
+                    message: new_message,
+                });
             }
-        });
-    
-        // save to db
-        let chat = await OneToOneMessage.findOne({participants: { $size: 2, $all: [data.to, data.from] }});
-        if (!chat) return;
-        const new_message = {
-            to: data.to,
-            from: data.from,
-            type: "file",
-            created_at: Date.now(),
-            file: location,
-        };
-        chat.messages.push(new_message);
-        await chat.save({ new: true, validateModifiedOnly: true });
-    
-        // emit incoming_message -> to user
-        const to_user = await User.findById(data.to);
-        if (to_user) {
-            io.to(to_user.socket_id).emit("new_file_message", {
-                conversation_id: chat._id,
-                message: new_message,
-            });
-        }
-    
-        // emit outgoing_message -> from user
-        const from_user = await User.findById(data.from);
-        if (from_user) {
-            io.to(from_user.socket_id).emit("new_file_message", {
-                conversation_id: chat._id,
-                message: new_message,
-            });
+        
+            // emit outgoing_message -> from user
+            const from_user = await User.findById(data.from);
+            if (from_user) {
+                io.to(from_user.socket_id).emit("new_file_message", {
+                    conversation_id: chat._id,
+                    message: new_message,
+                });
+            }
+        } catch (err) {
+            console.log(err);
         }
     });
 
@@ -385,16 +414,29 @@ io.on("connection", async (socket) => {
         console.log("Received message:", data);
     
         // data: {from, conversation_id, participants, file}
-        let {from, conversation_id, participants, file} = data;
-    
-        // Get the file name
-        const fileNameOrigin = file.name ?? ".txt";
+        let {from, conversation_id, participants, name_file, file} = data;
     
         // Generate a unique filename
-        const fileNameConfig = `${Number(Date.now())}_${fileNameOrigin}`;
+        const fileNameConfig = `${Number(Date.now())}_${name_file}`;
+
+        // Tạo đường dẫn
+        const uploadsDir = path.join(__dirname, 'uploads');
+        if (!fs.existsSync(uploadsDir)) {
+            fs.mkdirSync(uploadsDir);
+        }
+        const filePath = path.join(uploadsDir, fileNameConfig);
+
+        // Ghi Buffer vào file
+        fs.writeFile(filePath, file, (err) => {
+            if (err) {
+                console.error('Error saving file:', err);
+            } else {
+                console.log(`File saved: ${filePath}`);
+            }
+        });
     
         // upload file to AWS s3
-        const fileStream = fs.createReadStream(file.path);
+        const fileStream = fs.createReadStream(filePath);
         fileStream.on('error', function(err) {
             console.log('File Error', err);
         });
@@ -414,9 +456,17 @@ io.on("connection", async (socket) => {
                 console.log('Error', err);
             }
             if (data) {
-                console.log('Uploaded in:', data.Location);
                 location = data.Location;
+                console.log('Uploaded in:', data.Location);
             }
+            // Xóa file
+            fs.unlink(filePath, (err) => {
+                if (err) {
+                    console.error('Error deleting file:', err);
+                } else {
+                    console.log(`File deleted: ${filePath}`);
+                }
+            });
         });
     
         // save to db
@@ -432,6 +482,7 @@ io.on("connection", async (socket) => {
             from: from,
             type: "file",
             created_at: Date.now(),
+            text: name_file,
             file: location,
         };
         chat.messages.push(new_message);
