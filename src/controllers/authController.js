@@ -229,12 +229,12 @@ exports.forgotPassword = async (req, res, next) => {
         console.log(resetURL);
 
         //TODO => Send Email With Reset URL
-        mailService.sendEmail({
-            from: process.env.MAILER,
-            to: userDoc.email,
-            subject: "Reset Password",
-            html: resetPasswordPattern(userDoc.firstName, resetURL),
-        });
+        // mailService.sendEmail({
+        //     from: process.env.MAILER,
+        //     to: userDoc.email,
+        //     subject: "Reset Password",
+        //     html: resetPasswordPattern(userDoc.firstName, resetURL),
+        // });
         res.status(200).json({
             status: "success",
             message: "Token sent to email!",
@@ -260,7 +260,7 @@ exports.resetPassword = async (req, res, next) => {
     console.log(token, password, passwordConfirm);
 
     // 1. Get user based on token
-    const hashedToken = crypto.createHash("sha256").update(token).digest("hex")
+    const hashedToken = crypto.createHash("sha256").update(req.body.token).digest("hex")
 
     const user = await User.findOne({ passwordResetToken: hashedToken, passwordResetExpires: { $gt: Date.now() } });
 
