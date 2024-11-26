@@ -286,7 +286,7 @@ io.on("connection", async (socket) => {
                     // emit incoming_message -> to user
                     const to_user = await User.findById(to);
                     if (to_user) {
-                        io.to(to_user.socket_id).emit("new_file_message", {
+                        io.to(to_user.socket_id).emit("new_message", {
                             conversation_id: chat._id,
                             message: new_message,
                         });
@@ -295,13 +295,13 @@ io.on("connection", async (socket) => {
                     // emit outgoing_message -> from user
                     const from_user = await User.findById(from);
                     if (from_user) {
-                        io.to(from_user.socket_id).emit("new_file_message", {
+                        io.to(from_user.socket_id).emit("new_message", {
                             conversation_id: chat._id,
                             message: new_message,
                         });
                     }
                 }
-                
+
                 // delete file
                 fs.unlink(filePath, (err) => {
                     if (err) {
