@@ -190,7 +190,7 @@ io.on("connection", async (socket) => {
         const to_user = await User.findById(to);
         const from_user = await User.findById(from);
     
-        // message => {to, from, type, created_at, text, file}
+        // message => {to, from, type, created_at, text}
     
         const new_message = {
             to: to,
@@ -260,16 +260,49 @@ io.on("connection", async (socket) => {
                 accessKeyId: AWS_ACCESS_KEY,
                 secretAccessKey: AWS_SECRET_ACCESS_KEY, 
             });
-            let location = "";
-            s3.upload(params, (err, data) => {
+            let location_file = "";
+            s3.upload(params, async (err, data) => {
                 if (err) {
                     console.log('Error', err);
                 }
                 if (data) {
-                    location = data.Location;
-                    console.log('Uploaded in:', data.Location);
+                    location_file = data.Location;
+                    console.log('Uploaded in:', location_file);
+
+                    // save to db
+                    let chat = await OneToOneMessage.findOne({participants: { $size: 2, $all: [to, from] }});
+                    if (!chat) return;
+                    const new_message = {
+                        to: to,
+                        from: from,
+                        type: "File",
+                        created_at: Date.now(),
+                        text: name_file,
+                        file: location_file,
+                    };
+                    chat.messages.push(new_message);
+                    await chat.save({ new: true, validateModifiedOnly: true });
+                
+                    // emit incoming_message -> to user
+                    const to_user = await User.findById(to);
+                    if (to_user) {
+                        io.to(to_user.socket_id).emit("new_file_message", {
+                            conversation_id: chat._id,
+                            message: new_message,
+                        });
+                    }
+                
+                    // emit outgoing_message -> from user
+                    const from_user = await User.findById(from);
+                    if (from_user) {
+                        io.to(from_user.socket_id).emit("new_file_message", {
+                            conversation_id: chat._id,
+                            message: new_message,
+                        });
+                    }
                 }
-                // Xóa file
+                
+                // delete file
                 fs.unlink(filePath, (err) => {
                     if (err) {
                         console.error('Error deleting file:', err);
@@ -278,38 +311,6 @@ io.on("connection", async (socket) => {
                     }
                 });
             });
-        
-            // save to db
-            let chat = await OneToOneMessage.findOne({participants: { $size: 2, $all: [data.to, data.from] }});
-            if (!chat) return;
-            const new_message = {
-                to: data.to,
-                from: data.from,
-                type: "file",
-                created_at: Date.now(),
-                text: name_file,
-                file: location,
-            };
-            chat.messages.push(new_message);
-            await chat.save({ new: true, validateModifiedOnly: true });
-        
-            // emit incoming_message -> to user
-            const to_user = await User.findById(data.to);
-            if (to_user) {
-                io.to(to_user.socket_id).emit("new_file_message", {
-                    conversation_id: chat._id,
-                    message: new_message,
-                });
-            }
-        
-            // emit outgoing_message -> from user
-            const from_user = await User.findById(data.from);
-            if (from_user) {
-                io.to(from_user.socket_id).emit("new_file_message", {
-                    conversation_id: chat._id,
-                    message: new_message,
-                });
-            }
         } catch (err) {
             console.log(err);
         }
