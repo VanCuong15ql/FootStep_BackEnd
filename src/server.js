@@ -225,6 +225,16 @@ io.on("connection", async (socket) => {
     
             // data: {to, from, nameFile, file}
             let { from, to, name_file, file } = data;
+
+            let type = "File";
+            let ext = name_file.split('.').pop();
+
+            const image_foot = ["jpg", "jpeg", "png", "gif"];
+            if (image_foot.includes(ext)) type = "Image";
+
+            const video_foot = ["mp4", "avi", "mov", "flv"];
+            if (video_foot.includes(ext)) type = "Video";
+
         
             // Generate a unique filename
             const fileNameConfig = `${Number(Date.now())}_${name_file}`;
@@ -275,7 +285,7 @@ io.on("connection", async (socket) => {
                     const new_message = {
                         to: to,
                         from: from,
-                        type: "File",
+                        type: type,
                         created_at: Date.now(),
                         text: name_file,
                         file: location_file,
@@ -746,7 +756,7 @@ io.on("connection", async (socket) => {
         // Find user by ID and set status as offline
 
         if (data.user_id) {
-        await User.findByIdAndUpdate(data.user_id, { status: "Offline" });
+            await User.findByIdAndUpdate(data.user_id, { status: "Offline" });
         }
 
         // broadcast to all conversation rooms of this user that this user is offline (disconnected)
