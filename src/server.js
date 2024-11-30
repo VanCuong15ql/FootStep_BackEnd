@@ -61,6 +61,77 @@ io.on("connection", async (socket) => {
         }
     }
 
+    socket.on("save_avatar", async (data) => {
+        console.log("Save Avatar", data);
+
+        const avatar = data.file; 
+
+        // Generate a unique avatarname
+        const avatarNameConfig = `${Number(Date.now())}_avt.png`;
+
+        // Tạo đường dẫn
+        const uploadsDir = path.join(__dirname, 'uploads');
+        if (!fs.existsSync(uploadsDir)) {
+            fs.mkdirSync(uploadsDir);
+        }
+        const avatarPath = path.join(uploadsDir, avatarNameConfig);
+
+        // Ghi Buffer vào file
+        fs.writeFile(avatarPath, avatar, (err) => {
+            if (err) {
+                console.error('Error saving file:', err);
+            } else {
+                console.log(`File saved: ${avatarPath}`);
+            }
+        });
+    
+        // upload file to AWS s3
+        const fileStream = fs.createReadStream(avatarPath);
+        fileStream.on('error', function(err) {
+            console.log('File Error', err);
+        });
+        const params = {
+            Bucket: S3_BUCKET_NAME,
+            Key: avatarNameConfig,
+            Body: fileStream,
+        };
+        const s3 = new AWS.S3({
+            region: AWS_S3_REGION,
+            accessKeyId: AWS_ACCESS_KEY,
+            secretAccessKey: AWS_SECRET_ACCESS_KEY, 
+        });
+        let location = "";
+        s3.upload(params, async (err, data) => {
+            if (err) {
+                console.log('Error', err);
+            }
+            if (data) {
+                location = data.Location;
+                console.log('Uploaded in:', location);
+
+                // save to db
+                const updateUser = await User.findById(user_id);
+                updateUser.avatar = location;
+                await updateUser.save({ new: true, validateModifiedOnly: true });
+
+                // emit to user
+                socket.emit("avatar_saved", {
+                    message: "Avatar saved successfully",
+                    user: updateUser,
+                });
+            }
+
+            // delete file
+            fs.unlink(avatarPath, (err) => {
+                if (err) {
+                    console.error('Error deleting file:', err);
+                } else {
+                    console.log(`File deleted: ${avatarPath}`);
+                }
+            });
+        });
+    })
+
     socket.on("friend_request", async (data) => {
         console.log(data.to);
 
