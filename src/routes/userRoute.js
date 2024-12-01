@@ -7,6 +7,7 @@ router.get("/get-me", authController.protect, userController.getMe);
 router.patch("/update-me", authController.protect, userController.updateMe);
 
 router.get("/get-all-verified-users", authController.protect, userController.getAllVerifiedUsers);
+router.get("/get-user-by-id/:user_id", authController.protect, userController.getUserById);  
 router.get("/get-users", authController.protect, userController.getUsers);
 
 router.get("/get-requests", authController.protect, userController.getRequests);

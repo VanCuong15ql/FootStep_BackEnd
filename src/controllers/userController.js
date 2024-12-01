@@ -70,6 +70,17 @@ exports.getAllVerifiedUsers = catchAsync(async (req, res, next) => {
     });
 });
 
+exports.getUserById = catchAsync(async (req, res, next) => {
+    console.log(req.params.user_id, "from get user by id");
+    const user = await User.findById(req.params.user_id);
+    console.log("get user by id", user);
+    res.status(200).json({
+        status: "success",
+        data: user,
+        message: "User found successfully!",
+    });
+});
+
 exports.getUsers = catchAsync(async (req, res, next) => {
     const this_user = await getUser(req.headers.authorization);
 
