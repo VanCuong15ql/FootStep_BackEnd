@@ -1,3 +1,8 @@
+require('aws-sdk/lib/maintenance_mode_message').suppress = true;
+const AWS = require('aws-sdk');
+const fs = require('fs');
+const path = require('path');
+
 const User = require("../models/user");
 const FriendRequest = require("../models/friendRequest");
 const AudioCall = require("../models/audioCall");
@@ -10,7 +15,7 @@ const { generateToken04 } = require("./zegoServerAssistant");
 
 const jwt = require("jsonwebtoken");
 
-const {ZEGO_APP_ID, ZEGO_SERVER_SECRET, JWT_SECRET} = require("../config/secrets");
+const {ZEGO_APP_ID, ZEGO_SERVER_SECRET, JWT_SECRET, S3_BUCKET_NAME, AWS_S3_REGION, AWS_ACCESS_KEY, AWS_SECRET_ACCESS_KEY} = require("../config/secrets");
 
 async function getUser(authorization) {
     const token = authorization.split(" ")[1];
@@ -26,6 +31,7 @@ exports.getMe = catchAsync(async (req, res, next) => {
 });
 
 exports.updateMe = catchAsync(async (req, res, next) => {
+    console.log("update me data: ", req.body);
     const user = await getUser(req.headers.authorization);
 
     const filteredBody = filterObj(
@@ -33,7 +39,6 @@ exports.updateMe = catchAsync(async (req, res, next) => {
         "firstName",
         "lastName",
         "about",
-        "avatar"
     );
 
     const updated_user = await User.findByIdAndUpdate(user._id, filteredBody, {
@@ -48,20 +53,31 @@ exports.updateMe = catchAsync(async (req, res, next) => {
 });
 
 exports.getAllVerifiedUsers = catchAsync(async (req, res, next) => {
-    const user = await getUser(req.headers.authorization);
+    const current_user = await getUser(req.headers.authorization);
 
     const all_users = await User.find({
         verified: true,
     }).select("firstName lastName _id");
   
     const remaining_users = all_users.filter(
-        (user) => user._id.toString() !== user._id.toString()
+        (user) => user._id.toString() !== current_user._id.toString()
     );
   
     res.status(200).json({
         status: "success",
         data: remaining_users,
         message: "Users found successfully!",
+    });
+});
+
+exports.getUserById = catchAsync(async (req, res, next) => {
+    console.log(req.params.user_id, "from get user by id");
+    const user = await User.findById(req.params.user_id);
+    console.log("get user by id", user);
+    res.status(200).json({
+        status: "success",
+        data: user,
+        message: "User found successfully!",
     });
 });
 

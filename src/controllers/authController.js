@@ -136,7 +136,7 @@ exports.login = async (req, res, next) => {
 
     const userDoc = await User.findOne({ email: email }).select("+password");
 
-    if (!User || !(await userDoc.correctPassword(password, userDoc.password))) {
+    if (!userDoc || !(await userDoc.correctPassword(password, userDoc.password))) {
         res.status(400).json({
             status: "error",
             message: "Email or password is incorrect",

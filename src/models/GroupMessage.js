@@ -1,20 +1,17 @@
 const mongoose = require('mongoose');
-const oneToOneMessageSchema = new mongoose.Schema({
+const groupMessageSchema = new mongoose.Schema({
     participants: [{
         type: mongoose.Schema.ObjectId,
         ref: 'User',
     }],
     messages: [{
-        to: {
-            type: mongoose.Schema.ObjectId,
-            ref: 'User',
-        },
         from: {
             type: mongoose.Schema.ObjectId,
             ref: 'User',
         },
         type: {
             type: String,
+            enum: ['Text', 'Media', 'Document', 'Link'],
         },
         created_at: {
             type: Date,
@@ -29,6 +26,6 @@ const oneToOneMessageSchema = new mongoose.Schema({
     }]
 });
 
-const OneToOneMessage = new mongoose.model('OneToOneMessage', oneToOneMessageSchema);
+const GroupMessage = new mongoose.model('GroupMessage', groupMessageSchema);
 
-module.exports = OneToOneMessage;
+module.exports = GroupMessage;
